@@ -1,0 +1,12 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Iraylib/include",
+      "main.c"
+    ],
+    "directory": "/home/slamko/proj/cc/autoroute",
+    "file": "/home/slamko/proj/cc/autoroute/main.c"
+  }
+]
