@@ -3,11 +3,12 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <math.h>
+#include <unistd.h>
 
 #include "raylib.h"
 
-#define GRID_WIDTH 48
-#define GRID_HEIGHT 48
+#define GRID_WIDTH 800
+#define GRID_HEIGHT 450
 
 const int screen_width = 800;
 const int screen_height = 450;
@@ -128,7 +129,7 @@ int dijkstra(struct circuit *circuit, struct grid *grid) {
                 return -1;
             }
 
-            DrawRectangle((next->p.x / (float)GRID_WIDTH) * screen_width, (next->p.y / (float)GRID_HEIGHT) * screen_height, 5, 5, (Color){200, 0, 0, 255});
+            DrawRectangle((next->p.x / (float)GRID_WIDTH) * screen_width, (next->p.y / (float)GRID_HEIGHT) * screen_height, 1, 1, (Color){200, 0, 0, 255});
 
             if (current == first) {
                 break;
@@ -156,8 +157,8 @@ int main() {
     
     grid_fill(&grid);
 
-    struct point a = { .x = 10, .y = 10 };
-    struct point b = { .x = 35, .y = 37 };
+    struct point a = { .x = 100, .y = 120 };
+    struct point b = { .x = 570, .y = 370 };
 
     struct circuit circ = {0};
     struct connection netlist[1] = {
@@ -167,17 +168,23 @@ int main() {
     circ.connects = netlist;
     circ.num_connects = 1;
 
-
     InitWindow(screen_width, screen_height, "Autorouter");
+
+    RenderTexture2D target = LoadRenderTexture(screen_width, screen_height);
+
+    BeginTextureMode(target);
+    DrawRectangle((a.x / (float)GRID_WIDTH) * screen_width, (a.y / (float)GRID_HEIGHT) * screen_height, 5, 5, (Color){200, 0, 0, 255});
+    DrawRectangle((b.x / (float)GRID_WIDTH) * screen_width, (b.y / (float)GRID_HEIGHT) * screen_height, 5, 5, (Color){200, 0, 0, 255});
+
+    ClearBackground(RAYWHITE);
+    dijkstra(&circ, &grid);
+    EndTextureMode();
 
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(RAYWHITE);
+        DrawTextureRec(target.texture, (Rectangle) { 0, 0, (float)target.texture.width, (float)-target.texture.height} , (Vector2) {0, 0}, WHITE);
 
-        DrawRectangle((a.x / (float)GRID_WIDTH) * screen_width, (a.y / (float)GRID_HEIGHT) * screen_height, 5, 5, (Color){200, 0, 0, 255});
-        DrawRectangle((b.x / (float)GRID_WIDTH) * screen_width, (b.y / (float)GRID_HEIGHT) * screen_height, 5, 5, (Color){200, 0, 0, 255});
-
-        dijkstra(&circ, &grid);
 
         EndDrawing();
     }
