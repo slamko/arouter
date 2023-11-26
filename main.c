@@ -7,11 +7,14 @@
 
 #include "raylib.h"
 
-#define GRID_WIDTH 800
-#define GRID_HEIGHT 450
+#define GRID_WIDTH 320
+#define GRID_HEIGHT 180
 
-const int screen_width = 800;
-const int screen_height = 450;
+const int screen_width = 1280;
+const int screen_height = 720;
+
+#define scalex(coord) ((coord / (float)GRID_WIDTH) * screen_width)
+#define scaley(coord) ((coord / (float)GRID_HEIGHT) * screen_height)
 
 struct point {
     int x;
@@ -20,7 +23,7 @@ struct point {
 };
 
 struct node {
-    struct point p;
+    struct point *p;
     float distance;
     int visited;
 };
@@ -55,24 +58,26 @@ float distance(struct point *a, struct point *b) {
 void draw_path(struct node *nodes, struct node *first, struct node *dest,
                struct grid *grid) {
     struct node *current = dest;
+    int last_x = dest->p->x;
+    int last_y = dest->p->y;
 
     while (current != first) {
         struct node *next = NULL;
         float next_dist = INFINITY;
 
-        for (int y = (current->p.y ? -1 : 0);
-             y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
-            for (int x = (current->p.x ? -1 : 0);
-                 x <= ((current->p.x >= grid->width - 1) ? 0 : 1); x++) {
-                struct node *node = &nodes[(current->p.y + y) * grid->width +
-                                           (current->p.x + x)];
+        for (int y = (current->p->y ? -1 : 0);
+             y <= ((current->p->y >= grid->height - 1) ? 0 : 1); y++) {
+            for (int x = (current->p->x ? -1 : 0);
+                 x <= ((current->p->x >= grid->width - 1) ? 0 : 1); x++) {
+                struct node *node = &nodes[(current->p->y + y) * grid->width +
+                                           (current->p->x + x)];
 
 
-                if (!node->visited || node == current || node->p.obstacle) {
+                if (!node->visited || node == current || node->p->obstacle) {
                     continue;
                 }
 
-                node->p.obstacle = true;
+                node->p->obstacle = true;
 
                 float dist = node->distance;
 
@@ -91,10 +96,17 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
             break;
         }
 
-        current = next;
 
-        DrawRectangle((next->p.x / (float)GRID_WIDTH) * screen_width, (next->p.y / (float)GRID_HEIGHT) * screen_height, 1, 1,
-                      (Color){200, 0, 0, 255});
+        if (next->p->x == last_x || next->p->y == last_y) {
+            current = next;
+            continue;
+        }
+
+        DrawLineEx((Vector2) {scalex(last_x), scaley(last_y)}, (Vector2) {scalex(current->p->x), scaley(current->p->y) }, 3., BLUE);
+        last_x = current->p->x;
+        last_y = current->p->y;
+
+        current = next;
 
     }
 }
@@ -103,19 +115,20 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
 #define HEURISTIC_D2 0.707
 
 float heuristic(struct node *node, struct node *dest) {
-    float dx = abs(node->p.x - dest->p.x);
-    float dy = abs(node->p.y - dest->p.y);
+    float dx = abs(node->p->x - dest->p->x);
+    float dy = abs(node->p->y - dest->p->y);
 
     return HEURISTIC_D1 * (dx + dy) + (HEURISTIC_D2 - 2 * HEURISTIC_D1) + (dx > dy ? dy : dx);
 }
 
 int dijkstra(struct circuit *circuit, struct grid *grid) {
+    int ret = 0;
     struct node *unvisited =
         malloc(grid->width * grid->height * sizeof(*unvisited));
 
     for (size_t i = 0; i < grid->height * grid->width; i++) {
         unvisited[i] = (struct node) {
-            .p = grid->pts[i],
+            .p = &grid->pts[i],
             .visited = false,
             .distance = INFINITY,
         };
@@ -134,20 +147,19 @@ int dijkstra(struct circuit *circuit, struct grid *grid) {
             struct node *next = NULL;
             float next_dist = INFINITY;
 
-            for (int y = (current->p.y ? -1 : 0);
-                 y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
-                for (int x = (current->p.x ? -1 : 0);
-                     x <= ((current->p.x >= grid->width - 1) ? 0 : 1); x++) {
+            for (int y = (current->p->y ? -1 : 0);
+                 y <= ((current->p->y >= grid->height - 1) ? 0 : 1); y++) {
+                for (int x = (current->p->x ? -1 : 0);
+                     x <= ((current->p->x >= grid->width - 1) ? 0 : 1); x++) {
                     struct node *node =
-                        &unvisited[(current->p.y + y) * grid->width +
-                                   (current->p.x + x)];
+                        &unvisited[(current->p->y + y) * grid->width +
+                                   (current->p->x + x)];
 
-                    if (node->visited || node == current || node->p.obstacle) {
+                    if (node->visited || node == current || node->p->obstacle) {
                         continue;
                     }
 
-                    float dist =
-                        distance(&node->p, &current->p) + current->distance;
+                    float dist = distance(node->p, current->p) + current->distance;
 
                     if (node->distance > dist) {
                         node->distance = dist;
@@ -165,7 +177,8 @@ int dijkstra(struct circuit *circuit, struct grid *grid) {
             unvisited_num--;
 
             if (!next) {
-                return -1;
+                fprintf(stderr, "Dijkstra error");
+                ret = -1;
             }
 
             current = next;
@@ -183,9 +196,10 @@ int dijkstra(struct circuit *circuit, struct grid *grid) {
         }
     }
 
+  cleanup:
     free(unvisited);
 
-    return 0;
+    return ret;
 }
 
 void grid_fill(struct grid *grid) {
@@ -203,16 +217,16 @@ int main() {
 
     grid_fill(&grid);
 
-    struct point a = {.x = 100, .y = 120};
-    struct point b = {.x = 570, .y = 370};
+    struct point a = {.x = 50, .y = 80};
+    struct point b = {.x = 270, .y = 170};
 
-    struct point c = {.x = 200, .y = 330};
-    struct point d = {.x = 310, .y = 110};
+    struct point c = {.x = 100, .y = 130};
+    struct point d = {.x = 100, .y = 10};
 
     struct circuit circ = {0};
     struct connection netlist[] = {
         {.a = &b, .b = &a},
-        {.a = &d, .b = &c},
+        {.a = &c, .b = &d},
     };
 
     circ.connects = netlist;
@@ -225,12 +239,12 @@ int main() {
     BeginTextureMode(target);
 
     for (size_t i = 0; i < sizeof netlist / sizeof *netlist; i++) {
-        DrawRectangle((netlist[i].a->x / (float)GRID_WIDTH) * screen_width,
-                      (netlist[i].a->y / (float)GRID_HEIGHT) * screen_height, 5,
-                      5, (Color){200, 0, 0, 255});
-        DrawRectangle((netlist[i].b->x / (float)GRID_WIDTH) * screen_width,
-                      (netlist[i].b->y / (float)GRID_HEIGHT) * screen_height, 5,
-                      5, (Color){200, 0, 0, 255});
+        DrawRectangle((netlist[i].a->x / (float)GRID_WIDTH) * screen_width - 5,
+                      (netlist[i].a->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
+                      10, (Color){200, 0, 0, 255});
+        DrawRectangle((netlist[i].b->x / (float)GRID_WIDTH) * screen_width - 5,
+                      (netlist[i].b->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
+                      10, (Color){200, 0, 0, 255});
     }
 
     ClearBackground(RAYWHITE);
