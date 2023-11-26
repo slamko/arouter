@@ -72,7 +72,7 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
                     continue;
                 }
 
-                /* node->p.obstacle = true; */
+                node->p.obstacle = true;
 
                 float dist = node->distance;
 
@@ -97,6 +97,16 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
                       (Color){200, 0, 0, 255});
 
     }
+}
+
+#define HEURISTIC_D1 0.95
+#define HEURISTIC_D2 0.707
+
+float heuristic(struct node *node, struct node *dest) {
+    float dx = abs(node->p.x - dest->p.x);
+    float dy = abs(node->p.y - dest->p.y);
+
+    return HEURISTIC_D1 * (dx + dy) + (HEURISTIC_D2 - 2 * HEURISTIC_D1) + (dx > dy ? dy : dx);
 }
 
 int dijkstra(struct circuit *circuit, struct grid *grid) {
@@ -143,8 +153,9 @@ int dijkstra(struct circuit *circuit, struct grid *grid) {
                         node->distance = dist;
                     }
 
-                    if (dist < next_dist) {
-                        next_dist = dist;
+                    float f_dist = dist + heuristic(node, dest);
+                    if (f_dist < next_dist) {
+                        next_dist = f_dist;
                         next = node;
                     }
                 }
@@ -223,7 +234,9 @@ int main() {
     }
 
     ClearBackground(RAYWHITE);
+
     int ret = dijkstra(&circ, &grid);
+
     EndTextureMode();
 
     while (!WindowShouldClose()) {
