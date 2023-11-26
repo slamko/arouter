@@ -72,12 +72,14 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
                 struct node *node = &nodes[(current->p->y + y) * grid->width +
                                            (current->p->x + x)];
 
+                if (node->p->obstacle) continue;
 
-                if (!node->visited || node == current || node->p->obstacle) {
+                node->p->obstacle = true;
+
+                if (!node->visited || node == current) {
                     continue;
                 }
 
-                node->p->obstacle = true;
 
                 float dist = node->distance;
 
@@ -95,7 +97,6 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
         if (!next) {
             break;
         }
-
 
         if (next->p->x == last_x || next->p->y == last_y) {
             current = next;
@@ -221,7 +222,7 @@ int main() {
     struct point b = {.x = 270, .y = 170};
 
     struct point c = {.x = 100, .y = 130};
-    struct point d = {.x = 100, .y = 10};
+    struct point d = {.x = 300, .y = 10};
 
     struct circuit circ = {0};
     struct connection netlist[] = {
