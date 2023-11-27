@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 
+#include "grid.h"
 #include "raylib.h"
 
 #define GRID_WIDTH 320
@@ -16,38 +18,11 @@ const int screen_height = 720;
 #define scalex(coord) ((coord / (float)GRID_WIDTH) * screen_width)
 #define scaley(coord) ((coord / (float)GRID_HEIGHT) * screen_height)
 
-struct point {
-    int x;
-    int y;
-    int obstacle;
-};
-
-struct node {
-    struct point p;
-    float distance;
-    int visited;
-};
 
 struct grid {
     size_t width;
     size_t height;
     struct point *pts;
-};
-
-#define ZWIDTH 16
-#define ZHEIGHT 16
-#define BLOCK_SIZE (ZWIDTH * ZHEIGHT)
-
-struct zblock {
-    struct node nodes[BLOCK_SIZE];
-};
-
-struct zgrid {
-    size_t zwidth;
-    size_t width;
-    size_t height;
-
-    struct zblock *blocks;
 };
 
 struct connection {
@@ -71,8 +46,7 @@ float distance(struct point *a, struct point *b) {
     }
 }
 
-void draw_path(struct node *nodes, struct node *first, struct node *dest,
-               struct grid *grid) {
+void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     struct node *current = dest;
     int last_x = dest->p.x;
     int last_y = dest->p.y;
@@ -85,8 +59,7 @@ void draw_path(struct node *nodes, struct node *first, struct node *dest,
              y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
             for (int x = (current->p.x ? -1 : 0);
                  x <= ((current->p.x >= grid->width - 1) ? 0 : 1); x++) {
-                struct node *node = &nodes[(current->p.y + y) * grid->width +
-                                           (current->p.x + x)];
+                struct node *node = get_node(grid, current->p.x + x, current->p.y + y);
 
                 if (node->p.obstacle) continue;
 
@@ -144,13 +117,14 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
     for (struct connection *con = circuit->connects;
          con - circuit->connects < circuit->num_connects; con++) {
 
-        for (size_t i = 0; i < grid->height * grid->width; i++) {
-            unvisited[i].visited = false;
-            unvisited[i].distance = INFINITY;
+        grid_foreach(node, grid) {
+            node->visited = false;
+            node->distance = INFINITY;
         }
 
-        struct node *first = &unvisited[con->a->y * grid->width + con->a->x];
-        struct node *dest = &unvisited[con->b->y * grid->width + con->b->x];
+        struct node *first = get_node(grid, con->a->x, con->a->y);
+        struct node *dest = get_node(grid, con->b->x, con->b->y);
+
         size_t unvisited_num = grid->width * grid->height;
 
         struct node *current = first;
@@ -162,11 +136,11 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
 
             for (int y = (current->p.y ? -1 : 0);
                  y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
+
                 for (int x = (current->p.x ? -1 : 0);
                      x <= ((current->p.x >= grid->width - 1) ? 0 : 1); x++) {
-                    struct node *node =
-                        &unvisited[(current->p.y + y) * grid->width +
-                                   (current->p.x + x)];
+
+                    struct node *node = get_node(grid, current->p.x + x, current->p.y + y);
 
                     if (node->visited || node == current || node->p.obstacle) {
                         continue;
@@ -201,13 +175,8 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
             }
         }
 
-        draw_path(unvisited, first, dest, grid);
-
-        
+        draw_path(first, dest, grid);
     }
-
-  cleanup:
-    free(unvisited);
 
     return ret;
 }
@@ -218,40 +187,6 @@ void grid_fill(struct grid *grid) {
             grid->pts[i * grid->width + j] = (struct point){.x = j, .y = i};
         }
     }
-}
-
-void delete_zgrid(struct zgrid *grid) {
-    free(grid->blocks);
-}
-
-#define align_div(x, div) (((x) / (div)) + (((x) % (div)) ? 1 : 0))
-
-void create_zgrid(struct zgrid *grid) {
-    size_t nzblocks = align_div(grid->width, ZWIDTH) * align_div(grid->height, ZHEIGHT);
-
-    grid->blocks = malloc(sizeof (*grid->blocks) * nzblocks);
-
-    for (int z = 0; z < nzblocks; z++) {
-        for (int i = 0; i < ZWIDTH * ZHEIGHT; i++) {
-            struct point p = (struct point) {
-                .x = (i % ZWIDTH) + ((z % align_div(grid->width, ZWIDTH)) * ZWIDTH),
-                .y = (i / ZWIDTH) + ((z / align_div(grid->width, ZWIDTH)) * ZHEIGHT),
-                .obstacle = false,
-            };
-
-            grid->blocks[z].nodes[i] = (struct node) {
-                .p = p,
-                .visited = false,
-                .distance = INFINITY,
-            };
-                
-        }
-    }
-}
-
-struct node *get_node(struct zgrid *grid, int x, int y) {
-    struct zblock *block = &grid->blocks[(x/ZWIDTH) + (y/ZHEIGHT) * (align_div(grid->width, ZWIDTH))];
-    return &block->nodes[(x % ZWIDTH) + (y % ZHEIGHT) * ZWIDTH];
 }
 
 int main() {
@@ -298,8 +233,12 @@ int main() {
     }
 
     ClearBackground(RAYWHITE);
-
+    
+    clock_t start = clock();
     int ret = dijkstra(&circ, &zgrid);
+    clock_t end = clock();
+
+    printf("Elapsed: %fus\n", (float)((end - start) * 1000 * 1000) / CLOCKS_PER_SEC);
 
     EndTextureMode();
 

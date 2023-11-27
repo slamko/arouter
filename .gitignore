@@ -1,4 +1,6 @@
 *.out
 raylib/
 autoroute
+*.o
+.cache/
    
