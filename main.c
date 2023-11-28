@@ -57,6 +57,15 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     int last_x = dest->p.x;
     int last_y = dest->p.y;
 
+    DrawRectangle((dest->p.x / (float)GRID_WIDTH) * screen_width - 5,
+                      (dest->p.y / (float)GRID_HEIGHT) * screen_height - 5, 10,
+                      10, (Color){200, 0, 0, 255});
+
+    DrawRectangle((first->p.x / (float)GRID_WIDTH) * screen_width - 5,
+                      (first->p.y / (float)GRID_HEIGHT) * screen_height - 5, 10,
+                      10, (Color){200, 0, 0, 255});
+
+
     while (current != first) {
         struct node *next = NULL;
         float next_dist = INFINITY;
@@ -85,25 +94,21 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
             }
         }
 
-        if (next == first) {
-            break;
-        }
-
         if (!next) {
             break;
         }
 
-        if (next->p.x == last_x || next->p.y == last_y) {
-            current = next;
-            continue;
+        if (next->p.x != last_x && next->p.y != last_y || next == first) {
+            DrawLineEx((Vector2) {scalex(last_x), scaley(last_y)}, (Vector2) {scalex(current->p.x), scaley(current->p.y) }, 3., BLUE);
+            last_x = current->p.x;
+            last_y = current->p.y;
         }
-
-        DrawLineEx((Vector2) {scalex(last_x), scaley(last_y)}, (Vector2) {scalex(current->p.x), scaley(current->p.y) }, 3., BLUE);
-        last_x = current->p.x;
-        last_y = current->p.y;
 
         current = next;
 
+        if (next == first) {
+            break;
+        }
     }
 }
 
@@ -204,9 +209,20 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                 }
 
                 if (!next) {
-                    fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
-                    ret = -1;
-                    goto cleanup;
+
+                    grid_foreach(node, grid) {
+                        node->visited = false;
+                        node->distance = INFINITY;
+                    }
+
+                    unvisited_num = grid->width * grid->height;
+                    current->distance = 0.;
+                    current->visited = true;
+                    continue;
+
+                    /* fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y); */
+                    /* ret = -1; */
+                    /* goto cleanup; */
                 }
             }
 
@@ -288,7 +304,7 @@ int main() {
     target = LoadRenderTexture(screen_width, screen_height);
 
     BeginTextureMode(target);
-
+/*
     for (size_t i = 0; i < sizeof netlist / sizeof *netlist; i++) {
         DrawRectangle((netlist[i].a->x / (float)GRID_WIDTH) * screen_width - 5,
                       (netlist[i].a->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
@@ -296,10 +312,11 @@ int main() {
         DrawRectangle((netlist[i].b->x / (float)GRID_WIDTH) * screen_width - 5,
                       (netlist[i].b->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
                       10, (Color){200, 0, 0, 255});
+
     }
 
+*/
     ClearBackground(RAYWHITE);
-    EndTextureMode();
     
     clock_t start = clock();
     /* int ret = route(&circ, &zgrid); */
@@ -347,8 +364,8 @@ int main() {
             }
         }
         
-        BeginDrawing();
 
+        BeginDrawing();
         ClearBackground(RAYWHITE);
         DrawTextureRec(target.texture,
                        (Rectangle){0, 0, (float)target.texture.width,
