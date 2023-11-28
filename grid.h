@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "raylib.h"
 
 #define align_div(x, div) (((x) / (div)) + (((x) % (div)) ? 1 : 0))
 
@@ -39,7 +40,7 @@ struct zgrid {
 
 #define grid_foreach(node, grid)         \
     struct node *node = grid->blocks[0].nodes;                          \
-    for (int i = 0; i < grid->nzblocks * BLOCK_SIZE; i++, node = &grid->blocks[i / BLOCK_SIZE].nodes[i % BLOCK_SIZE]);
+    for (int i = 0; i < grid->nzblocks * BLOCK_SIZE; i++, node = &grid->blocks[i / BLOCK_SIZE].nodes[i % BLOCK_SIZE])
 
 
 struct node *get_node(struct zgrid *grid, int x, int y);
@@ -49,5 +50,7 @@ void create_zgrid(struct zgrid *grid);
 struct node *get_node(struct zgrid *grid, int x, int y);
 
 void delete_zgrid(struct zgrid *grid);
+
+struct point vector_to_point(Vector2 vec);
 
 #endif

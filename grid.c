@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <math.h>
 
+#include "raylib.h"
+
 void delete_zgrid(struct zgrid *grid) {
     free(grid->blocks);
 }
@@ -27,7 +29,7 @@ void create_zgrid(struct zgrid *grid) {
 
             grid->blocks[z].nodes[i] = (struct node) {
                 .p = p,
-                .visited = false,
+                .visited = true,
                 .distance = INFINITY,
             };
                 
@@ -40,3 +42,10 @@ struct node *get_node(struct zgrid *grid, int x, int y) {
     return &block->nodes[(x % ZWIDTH) + (y % ZHEIGHT) * ZWIDTH];
 }
 
+struct point vector_to_point(Vector2 vec) {
+    return (struct point) {
+        .x = vec.x / 4,
+        .y = vec.y / 4,
+        .obstacle = false,
+    };
+}

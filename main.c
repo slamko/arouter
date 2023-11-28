@@ -18,11 +18,17 @@ const int screen_height = 720;
 #define scalex(coord) ((coord / (float)GRID_WIDTH) * screen_width)
 #define scaley(coord) ((coord / (float)GRID_HEIGHT) * screen_height)
 
+RenderTexture2D target;
 
 struct grid {
     size_t width;
     size_t height;
     struct point *pts;
+};
+
+struct llist {
+    struct node *node;
+    struct llist *next;
 };
 
 struct connection {
@@ -42,7 +48,7 @@ float distance(struct point *a, struct point *b) {
     } else if (abs(b->y - a->y) == 1 && abs(b->x - a->x) == 1) {
         return sqrt(2);
     } else{
-        return (sqrt(pow(b->x - a->x, 2) + pow(b->y - a->y, 2)));
+        return (sqrt(abs(b->x - a->x) * abs(b->x - a->x) + abs(b->y - a->y) * abs(b->y - a->y)));
     }
 }
 
@@ -64,11 +70,11 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
                 if (node->p.obstacle) continue;
 
                 node->p.obstacle = true;
+                DrawRectangle(scalex(node->p.x), scaley(node->p.y), 1, 1, GREEN);
 
                 if (!node->visited || node == current) {
                     continue;
                 }
-
 
                 float dist = node->distance;
 
@@ -125,22 +131,33 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         struct node *first = get_node(grid, con->a->x, con->a->y);
         struct node *dest = get_node(grid, con->b->x, con->b->y);
 
+        struct llist *unvisited = calloc(1, sizeof *unvisited);
+        struct llist *cur_unvisited = unvisited;
+
+        if (first == dest) {
+            return 0;
+        }
+
         size_t unvisited_num = grid->width * grid->height;
 
         struct node *current = first;
         first->distance = 0.f;
 
+        BeginTextureMode(target);
         while (unvisited_num > 0) {
             struct node *next = NULL;
             float next_dist = INFINITY;
 
-            for (int y = (current->p.y ? -1 : 0);
-                 y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
+            for (int y = ((current->p.y >= grid->height - 1) ? 0 : 1);
+                 y >= (current->p.y ? -1 : 0); y--) {
 
                 for (int x = (current->p.x ? -1 : 0);
                      x <= ((current->p.x >= grid->width - 1) ? 0 : 1); x++) {
 
                     struct node *node = get_node(grid, current->p.x + x, current->p.y + y);
+                    
+                    if (node->p.obstacle) {
+                    }
 
                     if (node->visited || node == current || node->p.obstacle) {
                         continue;
@@ -152,20 +169,45 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                         node->distance = dist;
                     }
 
-                    float f_dist = dist + heuristic(node, dest);
+                    float f_dist = node->distance + heuristic(node, dest);
                     if (f_dist < next_dist) {
                         next_dist = f_dist;
+
+                        if (next) {
+                            unvisited->node = next;
+                            unvisited->next = calloc(1, sizeof *unvisited);
+                            unvisited = unvisited->next;
+                        }
+
                         next = node;
                     }
                 }
             }
 
             current->visited = true;
+            DrawRectangle(scalex(current->p.x), scaley(current->p.y), 2, 2, RED);
+
             unvisited_num--;
 
             if (!next) {
-                fprintf(stderr, "Dijkstra error");
-                ret = -1;
+                fprintf(stderr, "Dijkstra error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
+
+                struct llist *prev = NULL;
+                for (struct llist *visit = cur_unvisited; visit && visit->node; visit = visit->next) {
+                    if (!visit->node->visited && !visit->node->p.obstacle) {
+                        next = visit->node;
+                    } else {
+                        free(prev);
+                        prev = visit;
+                    }
+                    cur_unvisited = visit;
+                }
+
+                if (!next) {
+                    fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
+                    ret = -1;
+                    goto cleanup;
+                }
             }
 
             current = next;
@@ -173,10 +215,34 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
             if (current == dest) {
                 break;
             }
+
+        }
+
+        if (unvisited_num == 0) {
+           fprintf(stderr, "Dijkstra error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
+           return 1;
         }
 
         draw_path(first, dest, grid);
+        EndTextureMode();
+
+      cleanup:;
+        struct llist *prev = NULL;
+        for (struct llist *visit = cur_unvisited; visit; visit = visit->next) {
+            free(prev);
+            prev = visit;
+        }
+
+        if (ret < 0) return ret;
     }
+
+    return ret;
+}
+
+int route(struct circuit *circuit, struct zgrid *grid) {
+    int ret = 0;
+    ret = dijkstra(circuit, grid);
+    /* ret |= draw(circuit, grid); */
 
     return ret;
 }
@@ -219,7 +285,7 @@ int main() {
 
     InitWindow(screen_width, screen_height, "Autorouter");
 
-    RenderTexture2D target = LoadRenderTexture(screen_width, screen_height);
+    target = LoadRenderTexture(screen_width, screen_height);
 
     BeginTextureMode(target);
 
@@ -233,17 +299,56 @@ int main() {
     }
 
     ClearBackground(RAYWHITE);
+    EndTextureMode();
     
     clock_t start = clock();
-    int ret = dijkstra(&circ, &zgrid);
+    /* int ret = route(&circ, &zgrid); */
     clock_t end = clock();
 
     printf("Elapsed: %fus\n", (float)((end - start) * 1000 * 1000) / CLOCKS_PER_SEC);
 
-    EndTextureMode();
+    int add_connection_mode = false;
+    int first_point = false;
+    struct point last_point = {0};
 
     while (!WindowShouldClose()) {
+
+        if (IsKeyPressed(KEY_A)) {
+            add_connection_mode = true;
+        }
+
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            add_connection_mode = false;
+        }
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_connection_mode) {
+            if (first_point) {
+                struct point dest = vector_to_point(GetMousePosition());
+                printf("Hello %d, %d\n", dest.x, dest.y);
+                printf("Last %d, %d\n", last_point.x, last_point.y);
+
+                struct circuit circ = {0};
+                struct connection netlist[] = {
+                    {.a = &dest, .b = &last_point},
+                };
+                
+                circ.connects = netlist;
+                circ.num_connects = sizeof(netlist) / sizeof(*netlist);
+                int ret = route(&circ, &zgrid);
+
+                first_point = false;
+                add_connection_mode = false;
+                last_point = (struct point){0};
+
+
+            } else {
+                last_point = vector_to_point(GetMousePosition());
+                first_point = true;
+            }
+        }
+        
         BeginDrawing();
+
         ClearBackground(RAYWHITE);
         DrawTextureRec(target.texture,
                        (Rectangle){0, 0, (float)target.texture.width,

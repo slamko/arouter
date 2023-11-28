@@ -14,7 +14,7 @@ $(EXE): $(OBJS)
 
 build/%.o: %.c $(HEADER)
 	mkdir -p build
-	gcc $< -I$(INCLUDE) -c
+	gcc -g $< -I$(INCLUDE) -c
 	mv $(patsubst %.c,%.o,$<) $@
 
 .PHONY: clean
