@@ -112,14 +112,15 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     }
 }
 
-#define HEURISTIC_D1 0.95
-#define HEURISTIC_D2 0.707
+#define HEURISTIC_D1 0.15
+#define HEURISTIC_D2 0.106
 
 float heuristic(struct node *node, struct node *dest) {
     float dx = abs(node->p.x - dest->p.x);
     float dy = abs(node->p.y - dest->p.y);
 
     return HEURISTIC_D1 * (dx + dy) + (HEURISTIC_D2 - 2 * HEURISTIC_D1) + (dx > dy ? dy : dx);
+    /* return 0.f; */
 }
 
 int dijkstra(struct circuit *circuit, struct zgrid *grid) {
@@ -175,17 +176,19 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                     }
 
                     float f_dist = node->distance + heuristic(node, dest);
+
+                    if (next) {
+                        unvisited->node = next;
+                        unvisited->next = calloc(1, sizeof *unvisited);
+                        unvisited = unvisited->next;
+                    }
+
                     if (f_dist < next_dist) {
                         next_dist = f_dist;
-
-                        if (next) {
-                            unvisited->node = next;
-                            unvisited->next = calloc(1, sizeof *unvisited);
-                            unvisited = unvisited->next;
-                        }
-
                         next = node;
                     }
+
+
                 }
             }
 
@@ -201,6 +204,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                 for (struct llist *visit = cur_unvisited; visit && visit->node; visit = visit->next) {
                     if (!visit->node->visited && !visit->node->p.obstacle) {
                         next = visit->node;
+                        break;
                     } else {
                         free(prev);
                         prev = visit;
