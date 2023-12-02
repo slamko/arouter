@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include <vector>
+#include <queue>
 #include "grid.h"
 #include "raylib.h"
 #include "raymath.h"
@@ -87,7 +88,7 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
 
                 if (node->p.obstacle) continue;
 
-                node->p.obstacle = true;
+                node->p.obstacle = LINE;
                 /* DrawRectangle(scalex(node->p.x), scaley(node->p.y), 1, 1, GREEN); */
 
                 if (!node->visited || node == current) {
@@ -152,9 +153,8 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         struct node *first = get_node(grid, con->a->x, con->a->y);
         struct node *dest = get_node(grid, con->b->x, con->b->y);
 
-        struct llist *unvisited = calloc(1, sizeof *unvisited);
-        // std::ve
-        struct llist *cur_unvisited = unvisited;
+        std::queue<struct node *> unvisited {};
+        unvisited.push(first);
 
         if (first == dest) {
             return 0;
@@ -195,17 +195,13 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                     float f_dist = node->distance + heuristic(node, dest);
 
                     if (next) {
-                        unvisited->node = next;
-                        unvisited->next = calloc(1, sizeof *unvisited);
-                        unvisited = unvisited->next;
+                      unvisited.push(next);
                     }
 
                     if (f_dist < next_dist) {
-                        next_dist = f_dist;
-                        next = node;
+                      next_dist = f_dist;
+                      next = node;
                     }
-
-
                 }
             }
 
@@ -217,20 +213,17 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
             if (!next) {
                 fprintf(stderr, "Dijkstra error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
 
-                struct llist *prev = NULL;
-                for (struct llist *visit = cur_unvisited; visit && visit->node; visit = visit->next) {
-                    if (!visit->node->visited && !visit->node->p.obstacle) {
-                        next = visit->node;
-                        break;
-                    } else {
-                        free(prev);
-                        prev = visit;
-                    }
-                    cur_unvisited = visit;
+                for (; !unvisited.empty(); unvisited.pop()) {
+                  struct node *visit = unvisited.front();
+                  if (!visit->visited && !visit->p.obstacle) {
+                    next = visit;
+                    break;
+                  } 
                 }
 
                 if (!next) {
 
+                  /*
                     grid_foreach(node, grid) {
                         node->visited = false;
                         node->distance = INFINITY;
@@ -240,10 +233,10 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                     current->distance = 0.;
                     current->visited = true;
                     continue;
+                  */
 
-                    /* fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y); */
-                    /* ret = -1; */
-                    /* goto cleanup; */
+                    fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
+                    return -1;
                 }
             }
 
@@ -265,13 +258,6 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         EndTextureMode();
         /* EndDrawing(); */
 
-      cleanup:;
-        struct llist *prev = NULL;
-        for (struct llist *visit = cur_unvisited; visit; visit = visit->next) {
-            free(prev);
-            prev = visit;
-        }
-
         if (ret < 0) return ret;
     }
 
@@ -289,7 +275,7 @@ int route(struct circuit *circuit, struct zgrid *grid) {
 void grid_fill(struct grid *grid) {
     for (size_t i = 0; i < grid->height; i++) {
         for (size_t j = 0; j < grid->width; j++) {
-            grid->pts[i * grid->width + j] = (struct point){.x = j, .y = i};
+          grid->pts[i * grid->width + j] = (struct point){.x = (int)j, .y = (int)i};
         }
     }
 }
@@ -334,7 +320,7 @@ int add_lead(struct zgrid *circ, struct point pos) {
 int main() {
 
     struct point pts[GRID_WIDTH * GRID_HEIGHT];
-    struct grid grid = {.pts = pts, .width = GRID_WIDTH, .height = GRID_HEIGHT};
+    struct grid grid = {.width = GRID_WIDTH, .height = GRID_HEIGHT, .pts = pts};
 
     struct zgrid zgrid = {0};
     zgrid.height = GRID_HEIGHT;
@@ -444,15 +430,6 @@ int main() {
             camera.zoom += (wheel * zoomIncrement);
             if (camera.zoom < zoomIncrement) camera.zoom = zoomIncrement;
         }
-
-        BeginTextureMode(target);
-        ClearBackground(RAYWHITE);
-        BeginMode2D(camera);
-
-        DrawLineEx((Vector2) {6, 6} , (Vector2) { 180, 180}, 4.0, RED);
-
-        EndMode2D();
-        EndTextureMode();
 
         BeginDrawing();
         ClearBackground(RAYWHITE);

@@ -4,13 +4,20 @@ LIBS=-Wl,-R/home/slamko/proj/cc/autoroute/$(LIBS_INCLUDE) -lraylib -lm
 
 EXE=autoroute
 SRC=$(wildcard *.c)
+CPP_SRC=$(wildcard *.cpp)
 OBJS=$(patsubst %.c,build/%.o,$(SRC))
+OBJS+=$(patsubst %.cpp,build/%.o,$(CPP_SRC))
 HEADER=$(wildcard *.h)
 
 all: $(EXE)
 
 $(EXE): $(OBJS)
-	gcc $^ -L$(LIBS_INCLUDE) -g $(LIBS) -o $@
+	g++ $^ -L$(LIBS_INCLUDE) -g $(LIBS) -o $@
+
+build/%.o: %.cpp $(HEADER)
+	mkdir -p build
+	g++ -g $< -I$(INCLUDE) -c
+	mv $(patsubst %.cpp,%.o,$<) $@
 
 build/%.o: %.c $(HEADER)
 	mkdir -p build
