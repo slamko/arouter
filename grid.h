@@ -11,10 +11,32 @@
 
 #define align_div(x, div) (((x) / (div)) + (((x) % (div)) ? 1 : 0))
 
+typedef enum {
+    NIL = 0,
+    LINE = 1,
+    LEAD = 2,
+    VIA = 3,
+} OBSTACLE;
+
 struct point {
     int x;
     int y;
-    int obstacle;
+    OBSTACLE obstacle;
+};
+
+struct vec2 {
+    int x;
+    int y;
+};
+
+struct lead {
+    struct vec2 orig;
+    int width; 
+    int height;
+};
+
+struct component {
+    struct lead leads[2];
 };
 
 struct node {

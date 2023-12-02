@@ -6,8 +6,11 @@
 #include <unistd.h>
 #include <time.h>
 
+#include <vector>
 #include "grid.h"
 #include "raylib.h"
+#include "raymath.h"
+#include "rlgl.h"
 
 #define GRID_WIDTH 320
 #define GRID_HEIGHT 180
@@ -19,16 +22,19 @@ const int screen_height = 720;
 #define scaley(coord) ((coord / (float)GRID_HEIGHT) * screen_height)
 
 RenderTexture2D target;
+Camera2D camera;
+
+typedef struct vec2 vec2;
+
+struct line {
+    vec2 start;
+    vec2 end;
+};
 
 struct grid {
     size_t width;
     size_t height;
     struct point *pts;
-};
-
-struct llist {
-    struct node *node;
-    struct llist *next;
 };
 
 struct connection {
@@ -57,6 +63,9 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     int last_x = dest->p.x;
     int last_y = dest->p.y;
 
+    struct vec2 prev_vec = {0};
+    struct vec2 prev_pos = {last_x, last_y};
+
     DrawRectangle((dest->p.x / (float)GRID_WIDTH) * screen_width - 5,
                       (dest->p.y / (float)GRID_HEIGHT) * screen_height - 5, 10,
                       10, (Color){200, 0, 0, 255});
@@ -79,7 +88,7 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
                 if (node->p.obstacle) continue;
 
                 node->p.obstacle = true;
-                DrawRectangle(scalex(node->p.x), scaley(node->p.y), 1, 1, GREEN);
+                /* DrawRectangle(scalex(node->p.x), scaley(node->p.y), 1, 1, GREEN); */
 
                 if (!node->visited || node == current) {
                     continue;
@@ -98,12 +107,18 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
             break;
         }
 
-        if (next->p.x != last_x && next->p.y != last_y || next == first) {
-            DrawLineEx((Vector2) {scalex(last_x), scaley(last_y)}, (Vector2) {scalex(current->p.x), scaley(current->p.y) }, 3., BLUE);
+        if (next->p.x - prev_pos.x != prev_vec.x || next->p.y - prev_pos.y != prev_vec.y || next == first) {
+
+            DrawLineEx(GetScreenToWorld2D((Vector2) {scalex(last_x), scaley(last_y)}, camera),
+                       GetScreenToWorld2D((Vector2) {scalex(current->p.x), scaley(current->p.y) }, camera), 3. / camera.zoom, BLUE);
+
+            prev_vec = (struct vec2) { next->p.x - prev_pos.x, next->p.y - prev_pos.y};
+
             last_x = current->p.x;
             last_y = current->p.y;
         }
 
+        prev_pos = (struct vec2) { current->p.x, current->p.y };
         current = next;
 
         if (next == first) {
@@ -138,6 +153,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         struct node *dest = get_node(grid, con->b->x, con->b->y);
 
         struct llist *unvisited = calloc(1, sizeof *unvisited);
+        // std::ve
         struct llist *cur_unvisited = unvisited;
 
         if (first == dest) {
@@ -150,6 +166,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         first->distance = 0.f;
 
         BeginTextureMode(target);
+        BeginMode2D(camera);
         while (unvisited_num > 0) {
             struct node *next = NULL;
             float next_dist = INFINITY;
@@ -193,7 +210,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
             }
 
             current->visited = true;
-            DrawRectangle(scalex(current->p.x), scaley(current->p.y), 2, 2, RED);
+            /* DrawRectangle(scalex(current->p.x), scaley(current->p.y), 2, 2, RED); */
 
             unvisited_num--;
 
@@ -244,7 +261,9 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
         }
 
         draw_path(first, dest, grid);
+        EndMode2D();
         EndTextureMode();
+        /* EndDrawing(); */
 
       cleanup:;
         struct llist *prev = NULL;
@@ -273,6 +292,43 @@ void grid_fill(struct grid *grid) {
             grid->pts[i * grid->width + j] = (struct point){.x = j, .y = i};
         }
     }
+}
+
+int add_lead(struct zgrid *circ, struct point pos) {
+    for (int y = ((pos.y >= circ->height - 1) ? 0 : 1);
+         y >= (pos.y ? -1 : 0); y--) {
+        
+        for (int x = (pos.x ? -1 : 0);
+             x <= ((pos.x >= circ->width - 1) ? 0 : 1); x++) {
+
+            struct node *node = get_node(circ, pos.x + x, pos.y + y);
+
+            if (node->p.obstacle) {
+                return 1;
+            }
+        }
+    }
+            
+    for (int y = ((pos.y >= circ->height - 1) ? 0 : 1);
+         y >= (pos.y ? -1 : 0); y--) {
+        
+        for (int x = (pos.x ? -1 : 0);
+             x <= ((pos.x >= circ->width - 1) ? 0 : 1); x++) {
+
+            struct node *node = get_node(circ, pos.x + x, pos.y + y);
+
+            node->p.obstacle = LEAD;
+        }
+    }
+    
+    
+    BeginTextureMode(target);
+    DrawRectangleV(GetScreenToWorld2D((Vector2) {scalex(pos.x) - 5, scaley(pos.y) - 5}, camera),
+                   (Vector2) {10, 10}, (Color){200, 0, 0, 255});
+    EndTextureMode();
+
+
+    return 0;
 }
 
 int main() {
@@ -304,24 +360,14 @@ int main() {
     circ.num_connects = sizeof(netlist) / sizeof(*netlist);
 
     InitWindow(screen_width, screen_height, "Autorouter");
-
-    target = LoadRenderTexture(screen_width, screen_height);
+    camera = (Camera2D){0};
+    camera.zoom = 1.0f;
 
     BeginTextureMode(target);
-/*
-    for (size_t i = 0; i < sizeof netlist / sizeof *netlist; i++) {
-        DrawRectangle((netlist[i].a->x / (float)GRID_WIDTH) * screen_width - 5,
-                      (netlist[i].a->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
-                      10, (Color){200, 0, 0, 255});
-        DrawRectangle((netlist[i].b->x / (float)GRID_WIDTH) * screen_width - 5,
-                      (netlist[i].b->y / (float)GRID_HEIGHT) * screen_height - 5, 10,
-                      10, (Color){200, 0, 0, 255});
-
-    }
-
-*/
     ClearBackground(RAYWHITE);
+    EndTextureMode();
     
+    target = LoadRenderTexture(screen_width, screen_height);
     clock_t start = clock();
     /* int ret = route(&circ, &zgrid); */
     clock_t end = clock();
@@ -331,6 +377,7 @@ int main() {
     int add_connection_mode = false;
     int first_point = false;
     struct point last_point = {0};
+    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
 
@@ -344,7 +391,7 @@ int main() {
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_connection_mode) {
             if (first_point) {
-                struct point dest = vector_to_point(GetMousePosition());
+                struct point dest = vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera));
                 printf("Hello %d, %d\n", dest.x, dest.y);
                 printf("Last %d, %d\n", last_point.x, last_point.y);
 
@@ -353,7 +400,7 @@ int main() {
                     {.a = &dest, .b = &last_point},
                 };
                 
-                circ.connects = netlist;
+                circ.connects = netlist; /*  */
                 circ.num_connects = sizeof(netlist) / sizeof(*netlist);
                 int ret = route(&circ, &zgrid);
 
@@ -363,22 +410,70 @@ int main() {
 
 
             } else {
-                last_point = vector_to_point(GetMousePosition());
+                last_point = vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera));
                 first_point = true;
             }
+            printf("World %d, %d\n", (int)GetScreenToWorld2D(GetMousePosition(), camera).x, (int)GetScreenToWorld2D(GetMousePosition(), camera).y);
+
+
+        } else if (IsKeyPressed(KEY_C)) {
+            Vector2 mouse = GetMousePosition();
+            if (add_lead(&zgrid, vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera)))) {
+                printf("Add lead failed\n");
+            }
         }
-        
+
+        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            Vector2 delta = GetMouseDelta();
+            delta = Vector2Scale(delta, -1.0f / camera.zoom);
+
+            camera.target = Vector2Add(camera.target, delta);
+        }
+
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0)
+        {
+            Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
+            
+            camera.offset = GetMousePosition();
+
+            camera.target = mouseWorldPos;
+
+            const float zoomIncrement = 0.2f;
+
+            camera.zoom += (wheel * zoomIncrement);
+            if (camera.zoom < zoomIncrement) camera.zoom = zoomIncrement;
+        }
+
+        BeginTextureMode(target);
+        ClearBackground(RAYWHITE);
+        BeginMode2D(camera);
+
+        DrawLineEx((Vector2) {6, 6} , (Vector2) { 180, 180}, 4.0, RED);
+
+        EndMode2D();
+        EndTextureMode();
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
+
+        BeginMode2D(camera);
+        rlPushMatrix();
+        rlTranslatef(0, 25*50, 0);
+        rlRotatef(90, 1, 0, 0);
+        DrawGrid(100, 50);
+        rlPopMatrix();
+        
         DrawTextureRec(target.texture,
                        (Rectangle){0, 0, (float)target.texture.width,
                                    (float)-target.texture.height},
                        (Vector2){0, 0}, WHITE);
+        EndMode2D();
 
         EndDrawing();
     }
 
+    UnloadRenderTexture(target);
     CloseWindow();
     delete_zgrid(&zgrid);
 
