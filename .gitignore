@@ -3,4 +3,5 @@ raylib/
 autoroute
 *.o
 .cache/
+ray*
    
