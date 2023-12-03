@@ -1,4 +1,4 @@
-#include "grid.h"
+#include "grid.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -41,6 +41,14 @@ struct node *get_node(struct zgrid *grid, int x, int y) {
     struct zblock *block = &grid->blocks[(x/ZWIDTH) + (y/ZHEIGHT) * (align_div(grid->width, ZWIDTH))];
     return &block->nodes[(x % ZWIDTH) + (y % ZHEIGHT) * ZWIDTH];
 }
+
+vec2 scale_vec(vec2 vec) {
+  return {
+    vec.x / 4,
+    vec.y / 4,
+  };
+}
+
 
 struct point vector_to_point(Vector2 vec) {
     return (struct point) {

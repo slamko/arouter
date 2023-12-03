@@ -28,14 +28,17 @@ struct vec2 {
     int x;
     int y;
 
-    implicit operator Vector2(){
+  vec2() : x(0), y(0) {}
+  vec2(Vector2 vec) : x(vec.x), y(vec.y) {}
+  vec2(int x, int y) : x(x), y(y) {}
+
+    operator Vector2(){
         return {
             .x = (float)x,
             .y = (float)y,
-        }
-    }
+        };
+    }  
 };
-
 struct lead {
     struct vec2 orig;
     int width; 
@@ -81,5 +84,7 @@ struct node *get_node(struct zgrid *grid, int x, int y);
 void delete_zgrid(struct zgrid *grid);
 
 struct point vector_to_point(Vector2 vec);
+
+vec2 scale_vec(vec2 vec);
 
 #endif

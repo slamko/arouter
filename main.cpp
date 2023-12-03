@@ -8,7 +8,7 @@
 
 #include <vector>
 #include <queue>
-#include "grid.h"
+#include "grid.hpp"
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
@@ -38,15 +38,6 @@ struct grid {
     struct point *pts;
 };
 
-struct connection {
-    struct point *a, *b;
-};
-
-struct circuit {
-    struct connection *connects;
-    size_t num_connects;
-};
-
 static std::vector<line> lines {};
 static std::vector<lead> leads {};
 static std::vector<line> connections {};
@@ -68,7 +59,7 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     int last_x = dest->p.x;
     int last_y = dest->p.y;
 
-    struct vec2 prev_vec = {0};
+    struct vec2 prev_vec {};
     struct vec2 prev_pos = {last_x, last_y};
 
     struct lead depart = {
@@ -83,8 +74,8 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
       .height = 10,
     };
     
-    leads.push_back(depart);
-    leads.push_back(last);
+    // leads.push_back(depart);
+    // leads.push_back(last);
 
     while (current != first) {
         struct node *next = NULL;
@@ -121,19 +112,19 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
         if (next->p.x - prev_pos.x != prev_vec.x || next->p.y - prev_pos.y != prev_vec.y || next == first) {
 
             line new_line = {
-              .start = {.x = scalex(current->p.x), .y = scalex(current->p.y)},
-              .end = {.x = scalex(last_x), .y = scalex(last_y)},
+              .start = {scalex(current->p.x), scalex(current->p.y)},
+              .end = {scalex(last_x), scalex(last_y)},
             };
 
             lines.push_back(new_line);
 
-            prev_vec = (struct vec2) { next->p.x - prev_pos.x, next->p.y - prev_pos.y};
+            prev_vec = { next->p.x - prev_pos.x, next->p.y - prev_pos.y};
 
             last_x = current->p.x;
             last_y = current->p.y;
         }
 
-        prev_pos = (struct vec2) { current->p.x, current->p.y };
+        prev_pos = { current->p.x, current->p.y };
         current = next;
 
         if (next == first) {
@@ -153,19 +144,18 @@ float heuristic(struct node *node, struct node *dest) {
     /* return 0.f; */
 }
 
-int dijkstra(struct circuit *circuit, struct zgrid *grid) {
+int dijkstra(std::vector<line> &connects, struct zgrid *grid) {
     int ret = 0;
 
-    for (struct connection *con = circuit->connects;
-         con - circuit->connects < circuit->num_connects; con++) {
+    for (auto &con : connects){
 
         grid_foreach(node, grid) {
             node->visited = false;
             node->distance = INFINITY;
         }
 
-        struct node *first = get_node(grid, con->a->x, con->a->y);
-        struct node *dest = get_node(grid, con->b->x, con->b->y);
+        struct node *first = get_node(grid, con.start.x / 4, con.start.y / 4);
+        struct node *dest = get_node(grid, con.end.x / 4, con.end.y / 4);
 
         std::queue<struct node *> unvisited {};
         unvisited.push(first);
@@ -277,7 +267,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
     return ret;
 }
 
-int route(struct circuit *circuit, struct zgrid *grid) {
+int route(std::vector<line> &circuit, struct zgrid *grid) {
     int ret = 0;
     ret = dijkstra(circuit, grid);
     /* ret |= draw(circuit, grid); */
@@ -344,21 +334,6 @@ int main() {
 
     grid_fill(&grid);
 
-    struct point a = {.x = 50, .y = 80};
-    struct point b = {.x = 270, .y = 170};
-
-    struct point c = {.x = 100, .y = 130};
-    struct point d = {.x = 300, .y = 10};
-
-    struct circuit circ = {0};
-    struct connection netlist[] = {
-        {.a = &b, .b = &a},
-        {.a = &c, .b = &d},
-    };
-
-    circ.connects = netlist;
-    circ.num_connects = sizeof(netlist) / sizeof(*netlist);
-
     InitWindow(screen_width, screen_height, "Autorouter");
     camera = (Camera2D){0};
     camera.zoom = 1.0f;
@@ -378,8 +353,8 @@ int main() {
     bool add_lien_mode = false;
     int first_point = false;
 
-    struct point last_point = {0};
-    struct vec2 last_lead {};
+    vec2 last_point {};
+    vec2 last_lead {};
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
@@ -398,27 +373,20 @@ int main() {
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_connection_mode) {
             if (first_point) {
-                struct point dest = vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera));
+              vec2 dest = GetScreenToWorld2D(GetMousePosition(), camera);
                 printf("Hello %d, %d\n", dest.x, dest.y);
                 printf("Last %d, %d\n", last_point.x, last_point.y);
-
-                struct circuit circ = {0};
-                struct connection netlist[] = {
-                    {.a = &dest, .b = &last_point},
-                };
-                
-                circ.connects = netlist; /*  */
-                circ.num_connects = sizeof(netlist) / sizeof(*netlist);
-                int ret = route(&circ, &zgrid);
+               
+                std::vector<line> connects = { {last_point, dest} };
+                int ret = route(connects, &zgrid);
 
                 first_point = false;
                 add_connection_mode = false;
-                last_point = (struct point){0};
-
+                last_point = {};
 
             } else {
-                last_point = vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera));
-                first_point = true;
+              last_point = GetScreenToWorld2D(GetMousePosition(), camera); // 
+              first_point = true;
             }
             printf("World %d, %d\n", (int)GetScreenToWorld2D(GetMousePosition(), camera).x, (int)GetScreenToWorld2D(GetMousePosition(), camera).y);
 
@@ -426,16 +394,16 @@ int main() {
             Vector2 pos = GetScreenToWorld2D(GetMousePosition(), camera);
             for (auto &lead : leads) {
               if (CheckCollisionPointRec(pos, (Rectangle) {
-                    .x = (float)lead.orig.x,
-                    .y = (float)lead.orig.y,
+                    .x = (float)lead.orig.x - 5,
+                    .y = (float)lead.orig.y - 5,
                     .width = (float)lead.width,
                     .height = (float)lead.height,
                   })) {
                 if (first_point) {
                   struct vec2 dest_lead = lead.orig;
                   connections.push_back((line) {.start = last_lead, .end = dest_lead} );
-                  last_lead = {0};
-                  first_point = true;
+                  last_lead = {};
+                  first_point = false;
                 } else {
                   first_point = true;
                   last_lead = lead.orig;
@@ -448,6 +416,9 @@ int main() {
             if (add_lead(&zgrid, vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera)))) {
                 printf("Add lead failed\n");
             }
+        } else if (IsKeyPressed(KEY_R)) {
+          route(connections, &zgrid);
+          connections.clear();
         }
 
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
@@ -497,9 +468,8 @@ int main() {
         }
 
         for (auto &lead : leads) {
-          DrawRectangleV((Vector2) {(float)lead.orig.x, (float)lead.orig.y},
+          DrawRectangleV((Vector2) {(float)lead.orig.x - 5, (float)lead.orig.y - 5},
                          (Vector2) {(float)lead.width, (float)lead.height}, (Color){200, 0, 0, 255});
-    
         }
         
         EndMode2D();
