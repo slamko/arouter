@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <time.h>
 
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+
 #include <vector>
 #include <queue>
 #include "grid.hpp"
@@ -42,7 +45,7 @@ static std::vector<line> lines {};
 static std::vector<lead> leads {};
 static std::vector<line> connections {};
 
-float distance(struct point *a, struct point *b) {
+float euclid_distance(struct point *a, struct point *b) {
     if (a->x == b->x) {
         return abs(b->y - a->y);
     } else if (a->y == b->y) {
@@ -141,7 +144,6 @@ float heuristic(struct node *node, struct node *dest) {
     float dy = abs(node->p.y - dest->p.y);
 
     return HEURISTIC_D1 * (dx + dy) + (HEURISTIC_D2 - 2 * HEURISTIC_D1) + (dx > dy ? dy : dx);
-    /* return 0.f; */
 }
 
 int dijkstra(std::vector<line> &connects, struct zgrid *grid) {
@@ -190,7 +192,7 @@ int dijkstra(std::vector<line> &connects, struct zgrid *grid) {
                         continue;
                     }
 
-                    float dist = distance(&node->p, &current->p) + current->distance;
+                    float dist = euclid_distance(&node->p, &current->p) + current->distance;
 
                     if (node->distance > dist) {
                         node->distance = dist;
@@ -355,6 +357,10 @@ int main() {
 
     vec2 last_point {};
     vec2 last_lead {};
+    bool x_coord = false, y_coord = false;
+    int x_input {}, y_input {};
+
+    char text[64] = {0};
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
@@ -412,10 +418,7 @@ int main() {
 
           }
         } else if (IsKeyPressed(KEY_C)) {
-            Vector2 mouse = GetMousePosition();
-            if (add_lead(&zgrid, vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera)))) {
-                printf("Add lead failed\n");
-            }
+          x_coord = true;
         } else if (IsKeyPressed(KEY_R)) {
           route(connections, &zgrid);
           connections.clear();
@@ -471,8 +474,38 @@ int main() {
           DrawRectangleV((Vector2) {(float)lead.orig.x - 5, (float)lead.orig.y - 5},
                          (Vector2) {(float)lead.width, (float)lead.height}, (Color){200, 0, 0, 255});
         }
-        
+
         EndMode2D();
+
+        if (y_coord) {
+
+          int ret = GuiTextInputBox({.x = 550, .y = 340, .width = 150, .height = 150}, "New lead", "Y coordinate", "Apply", text, 18, NULL);
+          y_input = atoi(text);
+
+          if (ret >= 0) {
+            y_coord = false;
+
+            if (ret == 1) {
+              if (add_lead(&zgrid, vector_to_point((vec2){x_input, y_input} ))) {
+                printf("Add lead failed\n");
+              }
+            }
+          }
+        }
+
+        if (x_coord) {
+
+          int ret = GuiTextInputBox({.x = 550, .y = 340, .width = 150, .height = 150}, "New lead", "X coordinate", "Apply", text, 18, NULL);
+          x_input = atoi(text);
+
+          if (ret >= 0) {
+            x_coord = false;
+
+            if (ret == 1) {
+              y_coord = true;
+            }
+          }
+        }
 
         EndDrawing();
     }

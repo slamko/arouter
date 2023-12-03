@@ -1,4 +1,4 @@
-INCLUDE=raylib/include
+INCLUDE=-Iraylib/include -Iraygui-4.0/src/
 LIBS_INCLUDE=raylib/lib/
 LIBS=-Wl,-R/home/slamko/proj/cc/autoroute/$(LIBS_INCLUDE) -lraylib -lm
 
@@ -16,12 +16,12 @@ $(EXE): $(OBJS)
 
 build/%.o: %.cpp $(HEADER)
 	mkdir -p build
-	g++ -g $< -I$(INCLUDE) -c
+	g++ -g $< $(INCLUDE) -c
 	mv $(patsubst %.cpp,%.o,$<) $@
 
 build/%.o: %.c $(HEADER)
 	mkdir -p build
-	gcc -g $< -I$(INCLUDE) -c
+	gcc -g $< $(INCLUDE) -c
 	mv $(patsubst %.c,%.o,$<) $@
 
 .PHONY: clean

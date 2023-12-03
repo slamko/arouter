@@ -1,12 +1,26 @@
 [
   {
     "arguments": [
-      "/usr/bin/gcc",
-      "-c",
+      "/usr/bin/g++",
+      "-g",
       "-Iraylib/include",
-      "main.c"
+      "-Iraygui-4.0/src/",
+      "-c",
+      "grid.cpp"
     ],
     "directory": "/home/slamko/proj/cc/autoroute",
-    "file": "/home/slamko/proj/cc/autoroute/main.c"
+    "file": "/home/slamko/proj/cc/autoroute/grid.cpp"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-g",
+      "-Iraylib/include",
+      "-Iraygui-4.0/src/",
+      "-c",
+      "main.cpp"
+    ],
+    "directory": "/home/slamko/proj/cc/autoroute",
+    "file": "/home/slamko/proj/cc/autoroute/main.cpp"
   }
 ]
