@@ -19,8 +19,8 @@
 const int screen_width = 1280;
 const int screen_height = 720;
 
-#define scalex(coord) ((coord / (float)GRID_WIDTH) * screen_width)
-#define scaley(coord) ((coord / (float)GRID_HEIGHT) * screen_height)
+#define scalex(coord) (int)(((coord) / (float)GRID_WIDTH) * screen_width)
+#define scaley(coord) (int)(((coord) / (float)GRID_HEIGHT) * screen_height)
 
 RenderTexture2D target;
 Camera2D camera;
@@ -47,6 +47,10 @@ struct circuit {
     size_t num_connects;
 };
 
+static std::vector<line> lines {};
+static std::vector<lead> leads {};
+static std::vector<line> connections {};
+
 float distance(struct point *a, struct point *b) {
     if (a->x == b->x) {
         return abs(b->y - a->y);
@@ -67,14 +71,20 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     struct vec2 prev_vec = {0};
     struct vec2 prev_pos = {last_x, last_y};
 
-    DrawRectangle((dest->p.x / (float)GRID_WIDTH) * screen_width - 5,
-                      (dest->p.y / (float)GRID_HEIGHT) * screen_height - 5, 10,
-                      10, (Color){200, 0, 0, 255});
-
-    DrawRectangle((first->p.x / (float)GRID_WIDTH) * screen_width - 5,
-                      (first->p.y / (float)GRID_HEIGHT) * screen_height - 5, 10,
-                      10, (Color){200, 0, 0, 255});
-
+    struct lead depart = {
+      .orig = {scalex(first->p.x) - 5, scaley(first->p.y) - 5 },
+      .width = 10,
+      .height = 10,
+    };
+ 
+    struct lead last = {
+      .orig = {scalex(dest->p.x) - 5, scaley(dest->p.y) - 5 },
+      .width = 10,
+      .height = 10,
+    };
+    
+    leads.push_back(depart);
+    leads.push_back(last);
 
     while (current != first) {
         struct node *next = NULL;
@@ -110,8 +120,12 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
 
         if (next->p.x - prev_pos.x != prev_vec.x || next->p.y - prev_pos.y != prev_vec.y || next == first) {
 
-            DrawLineEx(GetScreenToWorld2D((Vector2) {scalex(last_x), scaley(last_y)}, camera),
-                       GetScreenToWorld2D((Vector2) {scalex(current->p.x), scaley(current->p.y) }, camera), 3. / camera.zoom, BLUE);
+            line new_line = {
+              .start = {.x = scalex(current->p.x), .y = scalex(current->p.y)},
+              .end = {.x = scalex(last_x), .y = scalex(last_y)},
+            };
+
+            lines.push_back(new_line);
 
             prev_vec = (struct vec2) { next->p.x - prev_pos.x, next->p.y - prev_pos.y};
 
@@ -223,7 +237,7 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
 
                 if (!next) {
 
-                  /*
+                  
                     grid_foreach(node, grid) {
                         node->visited = false;
                         node->distance = INFINITY;
@@ -233,10 +247,9 @@ int dijkstra(struct circuit *circuit, struct zgrid *grid) {
                     current->distance = 0.;
                     current->visited = true;
                     continue;
-                  */
 
-                    fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
-                    return -1;
+                    // fprintf(stderr, "Dijkstra definitif error: unvisited: %zu, point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
+                    // return -1;
                 }
             }
 
@@ -307,12 +320,13 @@ int add_lead(struct zgrid *circ, struct point pos) {
         }
     }
     
+    struct lead new_lead = {
+      .orig = {scalex(pos.x) - 5, scaley(pos.y) - 5 },
+      .width = 10,
+      .height = 10,
+    };
     
-    BeginTextureMode(target);
-    DrawRectangleV(GetScreenToWorld2D((Vector2) {scalex(pos.x) - 5, scaley(pos.y) - 5}, camera),
-                   (Vector2) {10, 10}, (Color){200, 0, 0, 255});
-    EndTextureMode();
-
+    leads.push_back(new_lead);
 
     return 0;
 }
@@ -360,15 +374,22 @@ int main() {
 
     printf("Elapsed: %fus\n", (float)((end - start) * 1000 * 1000) / CLOCKS_PER_SEC);
 
-    int add_connection_mode = false;
+    bool add_connection_mode = false;
+    bool add_lien_mode = false;
     int first_point = false;
+
     struct point last_point = {0};
+    struct vec2 last_lead {};
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
 
         if (IsKeyPressed(KEY_A)) {
             add_connection_mode = true;
+        }
+
+        if (IsKeyPressed(KEY_L)) {
+          add_lien_mode = true;
         }
 
         if (IsKeyPressed(KEY_ESCAPE)) {
@@ -401,7 +422,27 @@ int main() {
             }
             printf("World %d, %d\n", (int)GetScreenToWorld2D(GetMousePosition(), camera).x, (int)GetScreenToWorld2D(GetMousePosition(), camera).y);
 
+        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_lien_mode) {
+            Vector2 pos = GetScreenToWorld2D(GetMousePosition(), camera);
+            for (auto &lead : leads) {
+              if (CheckCollisionPointRec(pos, (Rectangle) {
+                    .x = (float)lead.orig.x,
+                    .y = (float)lead.orig.y,
+                    .width = (float)lead.width,
+                    .height = (float)lead.height,
+                  })) {
+                if (first_point) {
+                  struct vec2 dest_lead = lead.orig;
+                  connections.push_back((line) {.start = last_lead, .end = dest_lead} );
+                  last_lead = {0};
+                  first_point = true;
+                } else {
+                  first_point = true;
+                  last_lead = lead.orig;
+                }
+            }
 
+          }
         } else if (IsKeyPressed(KEY_C)) {
             Vector2 mouse = GetMousePosition();
             if (add_lead(&zgrid, vector_to_point(GetScreenToWorld2D(GetMousePosition(), camera)))) {
@@ -442,9 +483,25 @@ int main() {
         rlPopMatrix();
         
         DrawTextureRec(target.texture,
-                       (Rectangle){0, 0, (float)target.texture.width,
+                       (Rectangle){0, 0,
+                                   (float)target.texture.width,
                                    (float)-target.texture.height},
                        (Vector2){0, 0}, WHITE);
+
+        for (auto &line : lines) {
+          DrawLineEx({(float)line.start.x, (float)line.start.y}, {(float)line.end.x, (float)line.end.y}, 3.0, BLUE); // 
+        }
+
+        for (auto &line : connections) {
+          DrawLineEx({(float)line.start.x, (float)line.start.y}, {(float)line.end.x, (float)line.end.y}, 1.2, GREEN); // 
+        }
+
+        for (auto &lead : leads) {
+          DrawRectangleV((Vector2) {(float)lead.orig.x, (float)lead.orig.y},
+                         (Vector2) {(float)lead.width, (float)lead.height}, (Color){200, 0, 0, 255});
+    
+        }
+        
         EndMode2D();
 
         EndDrawing();
