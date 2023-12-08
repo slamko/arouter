@@ -1,4 +1,7 @@
 #include "grid.hpp"
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -8,6 +11,21 @@
 
 void delete_zgrid(struct zgrid *grid) {
     delete[] grid->blocks;
+}
+
+int grid_copy(struct zgrid *grid, struct zgrid *new_grid) {
+  *new_grid = *grid;
+  new_grid->blocks = new zblock[new_grid->nzblocks];
+
+  if (!new_grid->blocks) {
+    return 1;
+  }
+  
+  for (size_t i = 0; i < grid->nzblocks; i++) {
+    std::copy(std::begin(grid->blocks[i].nodes), std::end(grid->blocks[i].nodes), std::begin(new_grid->blocks[i].nodes));
+  }
+
+  return 0;
 }
 
 void create_zgrid(struct zgrid *grid) {

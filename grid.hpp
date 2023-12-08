@@ -39,15 +39,6 @@ struct vec2 {
         };
     }  
 };
-struct lead {
-    struct vec2 orig;
-    int width; 
-    int height;
-};
-
-struct component {
-    struct lead leads[2];
-};
 
 struct node {
     struct point p;
@@ -86,5 +77,7 @@ void delete_zgrid(struct zgrid *grid);
 struct point vector_to_point(Vector2 vec);
 
 vec2 scale_vec(vec2 vec);
+
+int grid_copy(struct zgrid *grid, struct zgrid *new_grid);
 
 #endif
