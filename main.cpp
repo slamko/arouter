@@ -54,10 +54,8 @@ struct trace {
 };
 
 struct connection {
-  // struct line line;
   struct lead *start;
   struct lead *end;
-    // struct trace *trace;
 };
 
 struct grid {
@@ -66,7 +64,6 @@ struct grid {
   struct point *pts;
 };
 
-static std::vector<line> lines{};
 static std::vector<trace> traces{};
 static std::vector<lead> leads{};
 static std::vector<connection> connections{};
@@ -84,7 +81,7 @@ float euclid_distance(struct point *a, struct point *b) {
     }
 }
 
-void draw_path(struct node *first, struct node *dest, struct zgrid *grid, struct zgrid *work_grid) {
+void draw_path(connection *con, node *first, node *dest, zgrid *grid, zgrid *work_grid) {
     struct node *current = dest;
     int last_x = dest->p.x;
     int last_y = dest->p.y;
@@ -106,11 +103,12 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid, struct
 
     // leads.push_back(depart);
     // leads.push_back(last);
+    std::vector<point> obstacle_points {};
+    std::vector<line> lines {};
 
     while (current != first) {
         struct node *next = NULL; // 
         float next_dist = INFINITY;
-        std::vector<point> obstacle_points{};
 
         for (int y = (current->p.y ? -1 : 0);
              y <= ((current->p.y >= grid->height - 1) ? 0 : 1); y++) {
@@ -166,7 +164,16 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid, struct
         current = next;
 
         if (next == first) {
-            break;
+          struct trace new_trace = {
+            .lines = lines,
+            .con = con,
+          };
+
+          traces.push_back(new_trace);
+
+          con->start->traces.push_back(new_trace);
+          con->end->traces.push_back(new_trace);
+          break;
         }
     }
 }
@@ -254,8 +261,6 @@ int search(struct node *first, struct node *dest, struct zgrid *grid) {
         }
 
         current->visited = true;
-        /* DrawRectangle(scalex(current->p.x), scaley(current->p.y), 2, 2, RED);
-         */
 
         unvisited_num--;
 
@@ -377,15 +382,16 @@ int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
     }
 
     for (auto &con : connects) { // 
-      struct node *closest_dest {};
-      struct node *first = get_node(grid, con.start->orig.x / 4, con.start->orig.y / 4);
+      struct node *first = get_node(&work_grid, con.start->orig.x / 4, con.start->orig.y / 4);
+      struct node *real_dest = get_node(&work_grid, con.end->orig.x / 4, con.end->orig.y / 4);
+      struct node *closest_dest = real_dest;
       float tot_dist = INFINITY;
       
       build_work_grid(&con, &work_grid);
 
       for (auto &trace : con.start->traces) {
         for (auto &line : trace.lines) {
-        struct node *dest = get_node(grid, line.end.x / 4, line.end.y / 4);
+        struct node *dest = get_node(&work_grid, line.end.x / 4, line.end.y / 4);
           
         dijkstra_search(&work_grid, first, dest);
 
@@ -403,7 +409,7 @@ int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
       BeginTextureMode(target);
       BeginMode2D(camera);
 
-      draw_path(first, closest_dest, grid, &work_grid);
+      draw_path(&con, first, closest_dest, grid, &work_grid);
 
       EndMode2D();
       EndTextureMode();
@@ -620,9 +626,11 @@ int main() {
                                    (float)-target.texture.height},
                        (Vector2){0, 0}, WHITE);
 
-        for (auto &line : lines) {
+        for (auto &trace : traces) {
+          for (auto &line : trace.lines) {
             DrawLineEx({(float)line.start.x, (float)line.start.y},
                        {(float)line.end.x, (float)line.end.y}, 3.0, BLUE); //
+          }
         }
 
         for (auto &line : connections) {

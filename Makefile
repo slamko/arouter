@@ -16,12 +16,12 @@ $(EXE): $(OBJS)
 
 build/%.o: %.cpp $(HEADER)
 	mkdir -p build
-	g++ -g $< $(INCLUDE) -c
+	g++ -ggdb $< $(INCLUDE) -c
 	mv $(patsubst %.cpp,%.o,$<) $@
 
 build/%.o: %.c $(HEADER)
 	mkdir -p build
-	gcc -g $< $(INCLUDE) -c
+	gcc -ggdb $< $(INCLUDE) -c
 	mv $(patsubst %.c,%.o,$<) $@
 
 .PHONY: clean
