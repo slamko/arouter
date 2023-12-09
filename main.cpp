@@ -1,4 +1,5 @@
 #include <cmath>
+#include <iterator>
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -83,7 +84,7 @@ float euclid_distance(struct point *a, struct point *b) {
     }
 }
 
-void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
+void draw_path(struct node *first, struct node *dest, struct zgrid *grid, struct zgrid *work_grid) {
     struct node *current = dest;
     int last_x = dest->p.x;
     int last_y = dest->p.y;
@@ -107,7 +108,7 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
     // leads.push_back(last);
 
     while (current != first) {
-        struct node *next = NULL;
+        struct node *next = NULL; // 
         float next_dist = INFINITY;
         std::vector<point> obstacle_points{};
 
@@ -118,7 +119,9 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
                 struct node *node =
                     get_node(grid, current->p.x + x, current->p.y + y);
 
-                if (node->p.obstacle)
+                struct node *work_node = get_node(work_grid, current->p.x + x, current->p.y + y);
+
+                if (work_node->p.obstacle)
                     continue;
 
                 node->p.obstacle = LINE;
@@ -126,15 +129,15 @@ void draw_path(struct node *first, struct node *dest, struct zgrid *grid) {
                 /* DrawRectangle(scalex(node->p.x), scaley(node->p.y), 1, 1,
                  * GREEN); */
 
-                if (!node->visited || node == current) {
+                if (!work_node->visited || work_node == current) {
                     continue;
                 }
 
-                float dist = node->distance;
+                float dist = work_node->distance;
 
                 if (dist < next_dist) {
                     next_dist = dist;
-                    next = node;
+                    next = work_node;
                 }
             }
         }
@@ -179,7 +182,23 @@ float heuristic(struct node *node, struct node *dest) {
            (dx > dy ? dy : dx);
 }
 
-int build_work_grid(struct zgrid *grid) { return 0; }
+void disable_obstacles(struct lead *lead, struct zgrid *work_grid)  {
+  for (auto &trace : lead->traces) {
+    for (auto &line : trace.lines) {
+      for (auto &obstacle_point : line.obstacle_points) {
+        get_node(work_grid, obstacle_point.x, obstacle_point.y)->p.obstacle = NIL;
+      }
+    }
+  }
+ 
+}
+
+int build_work_grid(struct connection *con, struct zgrid *work_grid) {
+  disable_obstacles(con->start, work_grid);
+  disable_obstacles(con->end, work_grid);
+  
+  return 0;
+}
 
 int search(struct node *first, struct node *dest, struct zgrid *grid) {
     std::queue<struct node *> unvisited{};
@@ -194,8 +213,6 @@ int search(struct node *first, struct node *dest, struct zgrid *grid) {
     struct node *current = first;
     first->distance = 0.f;
 
-    BeginTextureMode(target);
-    BeginMode2D(camera);
     while (unvisited_num > 0) {
         struct node *next = NULL;
         float next_dist = INFINITY;
@@ -336,6 +353,21 @@ float total_path_dist(struct node *first, struct node *dest, struct zgrid *grid)
     return dist;
 }
 
+void restore_work_grid(struct zgrid *grid, struct zgrid *work_grid) {
+  for (size_t i = 0; i < grid->nzblocks; i++) {
+    std::copy(std::begin(grid->blocks[i].nodes), std::end(grid->blocks[i].nodes), std::begin(work_grid->blocks[i].nodes));
+  }
+}
+
+void dijkstra_search(struct zgrid *grid, struct node *first, struct node *dest) {
+  grid_foreach(node, grid) {
+    node->visited = false;
+    node->distance = INFINITY;
+  }
+  
+  search(first, dest, grid);
+}
+
 int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
     int ret = 0;
 
@@ -349,43 +381,37 @@ int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
       struct node *first = get_node(grid, con.start->orig.x / 4, con.start->orig.y / 4);
       float tot_dist = INFINITY;
       
+      build_work_grid(&con, &work_grid);
+
       for (auto &trace : con.start->traces) {
         for (auto &line : trace.lines) {
-          
         struct node *dest = get_node(grid, line.end.x / 4, line.end.y / 4);
-        grid_foreach(node, grid) {
-            node->visited = false;
-            node->distance = INFINITY;
-        }
-
-        build_work_grid(&work_grid);
-
-        search(first, dest, &work_grid);
+          
+        dijkstra_search(&work_grid, first, dest);
 
         if (total_path_dist(first, dest, &work_grid) < tot_dist) {
           closest_dest = dest;
         }
-        
-       /* EndDrawing(); */
 
         if (ret < 0)
             return ret;
         }
       }
 
-      grid_foreach(node, grid) {
-        node->visited = false;
-        node->distance = INFINITY;
-      }
-      
-      build_work_grid(&work_grid);
+      dijkstra_search(&work_grid, first, closest_dest);
 
-      search(first, closest_dest, &work_grid);
-      
-      draw_path(first, closest_dest, &work_grid);
+      BeginTextureMode(target);
+      BeginMode2D(camera);
+
+      draw_path(first, closest_dest, grid, &work_grid);
+
       EndMode2D();
       EndTextureMode();
+
+      restore_work_grid(grid, &work_grid);
     }
+
+    delete_zgrid(&work_grid);
 
     return ret;
 }
@@ -438,6 +464,7 @@ int add_lead(struct zgrid *circ, struct point pos) {
         .orig = {scalex(pos.x) - 5, scaley(pos.y) - 5},
         .width = 10,
         .height = 10,
+        .traces = {},
     };
 
     leads.push_back(new_lead);
@@ -479,7 +506,7 @@ int main() {
     int first_point = false;
 
     vec2 last_point{};
-    vec2 last_lead{};
+    struct lead *last_lead{};
     bool x_coord = false, y_coord = false;
     int x_input{}, y_input{};
 
@@ -500,13 +527,14 @@ int main() {
             add_connection_mode = false;
         }
 
+        /*
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_connection_mode) {
             if (first_point) {
                 vec2 dest = GetScreenToWorld2D(GetMousePosition(), camera);
                 printf("Hello %d, %d\n", dest.x, dest.y);
                 printf("Last %d, %d\n", last_point.x, last_point.y);
 
-                std::vector<line> connects = {{last_point, dest}};
+                std::vector<connection> connects = {{last_point, dest}};
                 int ret = route(connects, &zgrid);
 
                 first_point = false;
@@ -521,7 +549,9 @@ int main() {
                    (int)GetScreenToWorld2D(GetMousePosition(), camera).x,
                    (int)GetScreenToWorld2D(GetMousePosition(), camera).y);
 
-        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_lien_mode) {
+        } else
+          */
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && add_lien_mode) {
             Vector2 pos = GetScreenToWorld2D(GetMousePosition(), camera);
             for (auto &lead : leads) {
                 if (CheckCollisionPointRec(pos,
@@ -532,14 +562,16 @@ int main() {
                                                .height = (float)lead.height,
                                            })) {
                     if (first_point) {
-                        struct vec2 dest_lead = lead.orig;
-                        connections.push_back(
-                            (line){.start = last_lead, .end = dest_lead});
+                        struct lead *dest_lead = &lead;
+                        connections.push_back({
+                            .start = last_lead,
+                            .end = dest_lead}
+                          );
                         last_lead = {};
                         first_point = false;
                     } else {
                         first_point = true;
-                        last_lead = lead.orig;
+                        last_lead = &lead;
                     }
                 }
             }
@@ -594,8 +626,8 @@ int main() {
         }
 
         for (auto &line : connections) {
-            DrawLineEx({(float)line.start.x, (float)line.start.y},
-                       {(float)line.end.x, (float)line.end.y}, 1.2, GREEN); //
+            DrawLineEx({(float)line.start->orig.x, (float)line.start->orig.y},
+                       {(float)line.end->orig.x, (float)line.end->orig.y}, 1.2, GREEN); //
         }
 
         for (auto &lead : leads) {
