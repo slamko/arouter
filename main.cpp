@@ -90,13 +90,13 @@ void draw_path(connection *con, node *first, node *dest, zgrid *grid, zgrid *wor
     struct vec2 prev_pos = {last_x, last_y};
 
     struct lead depart = {
-        .orig = {scalex(first->p.x) - 5, scaley(first->p.y) - 5},
+        .orig = {scalex(first->p.x), scaley(first->p.y)},
         .width = 10,
         .height = 10,
     };
 
     struct lead last = {
-        .orig = {scalex(dest->p.x) - 5, scaley(dest->p.y) - 5},
+        .orig = {scalex(dest->p.x), scaley(dest->p.y)},
         .width = 10,
         .height = 10,
     };
@@ -105,6 +105,7 @@ void draw_path(connection *con, node *first, node *dest, zgrid *grid, zgrid *wor
     // leads.push_back(last);
     std::vector<point> obstacle_points {};
     std::vector<line> lines {};
+    unsigned int cnt = 0;
 
     while (current != first) {
         struct node *next = NULL; // 
@@ -144,8 +145,11 @@ void draw_path(connection *con, node *first, node *dest, zgrid *grid, zgrid *wor
             break;
         }
 
+        cnt++;
+
         if (next->p.x - prev_pos.x != prev_vec.x ||
-            next->p.y - prev_pos.y != prev_vec.y || next == first) {
+            next->p.y - prev_pos.y != prev_vec.y || next == first || cnt > 5) {
+          cnt = 0;
             line new_line = {
                 .start = {scalex(current->p.x), scalex(current->p.y)},
                 .end = {scalex(last_x), scalex(last_y)},
@@ -207,7 +211,7 @@ int build_work_grid(struct connection *con, struct zgrid *work_grid) {
   return 0;
 }
 
-int search(struct node *first, struct node *dest, struct zgrid *grid) {
+int search(struct node *first, struct node *dest, struct zgrid *grid, bool indefinite ) {
     std::queue<struct node *> unvisited{};
     unvisited.push(first);
 
@@ -278,6 +282,7 @@ int search(struct node *first, struct node *dest, struct zgrid *grid) {
 
             if (!next) {
 
+              if (indefinite) {
                 grid_foreach(node, grid) {
                     node->visited = false;
                     node->distance = INFINITY;
@@ -291,6 +296,9 @@ int search(struct node *first, struct node *dest, struct zgrid *grid) {
                 // fprintf(stderr, "Dijkstra definitif error: unvisited: %zu,
                 // point: %d:%d\n", unvisited_num, current->p.x, current->p.y);
                 // return -1;
+              }
+
+              return -1;
             }
         }
 
@@ -364,13 +372,13 @@ void restore_work_grid(struct zgrid *grid, struct zgrid *work_grid) {
   }
 }
 
-void dijkstra_search(struct zgrid *grid, struct node *first, struct node *dest) {
+void dijkstra_search(struct zgrid *grid, struct node *first, struct node *dest, bool indefinite) {
   grid_foreach(node, grid) {
     node->visited = false;
     node->distance = INFINITY;
   }
   
-  search(first, dest, grid);
+  search(first, dest, grid, indefinite);
 }
 
 int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
@@ -385,31 +393,38 @@ int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
       struct node *first = get_node(&work_grid, con.start->orig.x / 4, con.start->orig.y / 4);
       struct node *real_dest = get_node(&work_grid, con.end->orig.x / 4, con.end->orig.y / 4);
       struct node *closest_dest = real_dest;
+      struct node *best_first = first;
       float tot_dist = INFINITY;
       
       build_work_grid(&con, &work_grid);
 
       for (auto &trace : con.start->traces) {
         for (auto &line : trace.lines) {
-        struct node *dest = get_node(&work_grid, line.end.x / 4, line.end.y / 4);
-          
-        dijkstra_search(&work_grid, first, dest);
-
-        if (total_path_dist(first, dest, &work_grid) < tot_dist) {
-          closest_dest = dest;
-        }
-
-        if (ret < 0)
-            return ret;
+          for (auto &trace_end : con.end->traces) {
+            for (auto &line_end : trace_end.lines) {
+              struct node *dest = get_node(&work_grid, line.start.x / 4, line.start.y / 4);
+              struct node *beg = get_node(&work_grid, line_end.start.x / 4, line_end.start.y / 4);
+              
+              dijkstra_search(&work_grid, beg, dest, false);
+              
+              if (total_path_dist(beg, dest, &work_grid) < tot_dist) {
+                closest_dest = dest;
+                best_first = beg;
+              }
+              
+              if (ret < 0)
+                return ret;
+            }
+          }
         }
       }
 
-      dijkstra_search(&work_grid, first, closest_dest);
+      dijkstra_search(&work_grid, best_first, closest_dest, true);
 
       BeginTextureMode(target);
       BeginMode2D(camera);
 
-      draw_path(&con, first, closest_dest, grid, &work_grid);
+      draw_path(&con, best_first, closest_dest, grid, &work_grid);
 
       EndMode2D();
       EndTextureMode();
@@ -473,6 +488,12 @@ int add_lead(struct zgrid *circ, struct point pos) {
         .traces = {},
     };
 
+    struct trace self = {
+      .lines = {{ .start = new_lead.orig, .end = new_lead.orig }},
+      .con = NULL,
+    };
+
+    new_lead.traces.push_back(self);
     leads.push_back(new_lead);
 
     return 0;
@@ -500,12 +521,10 @@ int main() {
     EndTextureMode();
 
     target = LoadRenderTexture(screen_width, screen_height);
-    clock_t start = clock();
     /* int ret = route(&circ, &zgrid); */
-    clock_t end = clock();
-
-    printf("Elapsed: %fus\n",
-           (float)((end - start) * 1000 * 1000) / CLOCKS_PER_SEC);
+    add_lead(&zgrid, (point){.x = 50, .y = 50, .obstacle = NIL});
+    add_lead(&zgrid, (point){.x = 75, .y = 25, .obstacle = NIL});
+    add_lead(&zgrid, (point){.x = 250, .y = 150, .obstacle = NIL});
 
     bool add_connection_mode = false;
     bool add_lien_mode = false;
@@ -640,7 +659,7 @@ int main() {
 
         for (auto &lead : leads) {
             DrawRectangleV(
-                (Vector2){(float)lead.orig.x - 5, (float)lead.orig.y - 5},
+                (Vector2){(float)lead.orig.x - 7.5f, (float)lead.orig.y - 7.5f},
                 (Vector2){(float)lead.width, (float)lead.height},
                 (Color){200, 0, 0, 255});
         }
