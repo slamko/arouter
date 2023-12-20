@@ -381,8 +381,25 @@ void dijkstra_search(struct zgrid *grid, struct node *first, struct node *dest, 
   search(first, dest, grid, indefinite);
 }
 
+int check_matched(struct lead *prev, struct lead *l, struct lead *goal) {
+  if (l == goal) return 1;
+  
+  for (auto &trace : l->traces) {
+    if (!trace.con) continue;
+
+    if (trace.con->start != prev && trace.con->end != prev) {
+      if (check_matched(l, (l == trace.con->end) ? trace.con->start : trace.con->end, goal)) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
 int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
     int ret = 0;
+
 
     struct zgrid work_grid {};
     if (grid_copy(grid, &work_grid)) {
@@ -390,6 +407,10 @@ int dijkstra(std::vector<connection> &connects, struct zgrid *grid) {
     }
 
     for (auto &con : connects) { // 
+      if (check_matched(NULL, con.start, con.end)) {
+        continue;
+      }
+
       struct node *first = get_node(&work_grid, con.start->orig.x / 4, con.start->orig.y / 4);
       struct node *real_dest = get_node(&work_grid, con.end->orig.x / 4, con.end->orig.y / 4);
       struct node *closest_dest = real_dest;
